@@ -456,8 +456,11 @@ def set_config_interfaces_v1(config, iface_config: dict):
 
     # configure nameservers
     if iface_config['type'] == 'nameserver':
-        for item in iface_config['address']:
-            set_name_server(config, item)
+        if iface_config['address'] is str:
+            set_name_server(config, iface_config['address'])
+        else:
+            for item in iface_config['address']:
+                set_name_server(config, item)
 
         for item in iface_config.get('search', []):
             set_domain_search(config, item)

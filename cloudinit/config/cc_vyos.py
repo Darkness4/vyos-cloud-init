@@ -28,6 +28,7 @@ from uuid import uuid4
 from cloudinit import log as logging
 from cloudinit.ssh_util import AuthKeyLineParser
 from cloudinit.distros import ug_util
+from cloudinit.net.network_state import ipv6_mask_to_net_prefix
 from cloudinit.settings import PER_INSTANCE
 from cloudinit.sources import INSTANCE_JSON_FILE
 from cloudinit.stages import Init
@@ -377,9 +378,40 @@ def _configure_subnets_v1(config,
                         ip_static_addr = ipaddress.IPv4Interface(
                             '{}/{}'.format(ip_address,
                                            subnet['netmask'])).compressed
+
+                    # configure gateway
+                    if 'gateway' in subnet and subnet['gateway'] != '0.0.0.0':
+                        logger.debug("Configuring gateway for {}: {}".format(
+                            iface_name, subnet['gateway']))
+                        set_ip_route(config, 4, '0.0.0.0/0', subnet['gateway'], True)
+
+                    # configure routes
+                    if 'routes' in subnet:
+                        for item in subnet['routes']:
+                            ip_network = ipaddress.ip_network('{}/{}'.format(
+                                item['network'], item['netmask']))
+                            set_ip_route(config, ip_network.version,
+                                        ip_network.compressed, item['gateway'], True)
+
                 # format IPv6
                 if ip_version == 6:
                     ip_static_addr = ip_interface.compressed
+
+                    # configure gateway
+                    if 'gateway' in subnet and subnet['gateway'] != '::':
+                        logger.debug("Configuring gateway for {}: {}".format(
+                            iface_name, subnet['gateway'])
+                        )
+                        set_ip_route(config, 6, '::/0', subnet['gateway'], True)
+
+                    # configure routes
+                    if 'routes' in subnet:
+                        for item in subnet['routes']:
+                            ip_network = ipaddress.ip_network('{}/{}'.format(
+                                item['network'], ipv6_mask_to_net_prefix(item['netmask'])))
+                            set_ip_route(config, ip_network.version,
+                                        ip_network.compressed, item['gateway'], True)
+
                 # apply to the configuration
                 if ip_static_addr:
                     set_ipaddress(config, iface_type, iface_name,
@@ -388,20 +420,6 @@ def _configure_subnets_v1(config,
                 logger.error(
                     "Impossible to configure static IP address: {}".format(
                         err))
-
-            # configure gateway
-            if 'gateway' in subnet and subnet['gateway'] != '0.0.0.0':
-                logger.debug("Configuring gateway for {}: {}".format(
-                    iface_name, subnet['gateway']))
-                set_ip_route(config, 4, '0.0.0.0/0', subnet['gateway'], True)
-
-            # configure routes
-            if 'routes' in subnet:
-                for item in subnet['routes']:
-                    ip_network = ipaddress.ip_network('{}/{}'.format(
-                        item['network'], item['netmask']))
-                    set_ip_route(config, ip_network.version,
-                                 ip_network.compressed, item['gateway'], True)
 
             # configure nameservers
             if 'dns_nameservers' in subnet:
